@@ -1,11 +1,18 @@
 # pages/3_stock_analysis.py
 
 import streamlit as st
-import sys, os
+#import sys, os
 import plotly.graph_objects as go
+import sys
+import os
 
+# إضافة مجلد الجذر الرئيسي للمشروع إلى مسار بايثون
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import streamlit as st
+import plotly.graph_objects as go
+
+# الآن يتم الاستدعاء بدون أي أخطاء
 from backend.services.stock_service import USStockService
 from ml_models.predictor import StockPricePredictor
 from ml_models.recommendation import RecommendationEngine
