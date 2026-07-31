@@ -1,0 +1,57 @@
+/* assets/style.css */
+
+/* خلفية المنصة وألوان النصوص */
+.stApp {
+    background-color: #0d1117;
+    color: #c9d1d9;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* تحسين بطاقات الـ Metrics */
+[data-testid="stMetric"] {
+    background: #161b22;
+    border: 1px solid #30363d;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+[data-testid="stMetric"]:hover {
+    border-color: #58a6ff;
+    transform: translateY(-2px);
+}
+
+/* تحسين الأزرار */
+.stButton > button {
+    background: linear-gradient(135deg, #1f6feb 0%, #1158c7 100%);
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    padding: 0.6rem 1.2rem;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    background: linear-gradient(135deg, #388bfd 0%, #1f6feb 100%);
+    box-shadow: 0 0 10px rgba(56, 139, 253, 0.4);
+}
+
+/* تحسين الجداول والـ Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+    background-color: #161b22;
+    padding: 8px;
+    border-radius: 10px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    border-radius: 6px;
+    color: #8b949e;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #21262d !important;
+    color: #58a6ff !important;
+}
