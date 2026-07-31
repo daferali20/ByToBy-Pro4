@@ -1,33 +1,48 @@
 import streamlit as st
-import yfinance as yf
+import sys, os
 import plotly.graph_objects as go
 
-st.title("🔬 التحليل الشامل للسهم | Stock Analysis")
+# ضمان العثور على مجلدات backend
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-symbol = st.text_input("أدخل رمز السهم (مثال: 2222.SR أو AAPL):", value="2222.SR")
+from backend.services.stock_service import StockService
+
+st.title("🔬 التحليل الفني الشامل")
+
+symbol = st.text_input("أدخل رمز السهم:", value="2222.SR")
+
+# استخدام st.cache_data لمنع إعادة تحميل البيانات مع كل تغيير بسيط
+@st.cache_data(ttl=300) # التحديث كل 5 دقائق
+def fetch_analysis(sym):
+    return StockService.get_full_analysis(sym)
 
 if symbol:
-    try:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period="6mo")
-        info = ticker.info
-        
-        st.subheader(f"تحليل سهم: {info.get('longName', symbol)}")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("السعر الحالي", f"{df['Close'].iloc[-1]:.2f}")
-        col2.metric("أعلى سعر (6 أشهر)", f"{df['High'].max():.2f}")
-        col3.metric("أدنى سعر (6 أشهر)", f"{df['Low'].min():.2f}")
-        col4.metric("المتوسط المتحرك 50", f"{df['Close'].rolling(50).mean().iloc[-1]:.2f}")
+    with st.spinner("جاري جلب البيانات وتحليل المؤشرات..."):
+        analysis = fetch_analysis(symbol)
 
-        # Plotly Candlestick with MA
-        df['MA50'] = df['Close'].rolling(50).mean()
-        fig = go.Figure()
-        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Price"))
-        fig.add_trace(go.Scatter(x=df.index, y=df['MA50'], mode='lines', name='MA 50', line=dict(color='orange')))
+    if "error" in analysis:
+        st.error(analysis["error"])
+    else:
+        st.subheader(f"الشركة: {analysis['company_name']}")
         
-        fig.update_layout(template="plotly_dark", height=500)
+        # عرض نتائج التقييم الفني
+        tech = analysis["technical_summary"]
+        col1, col2, col3 = st.columns(3)
+        col1.metric("السعر الحالي", f"{analysis['current_price']} SAR")
+        col2.metric("الاتجاه الفني", tech["trend"])
+        col3.metric("مؤشر RSI", f"{tech['rsi_value']} ({tech['rsi_status']})")
+
+        # النماذج الفنية المكتشفة
+        patterns = analysis["patterns"]
+        st.write("---")
+        st.write("### 📌 النماذج الفنية المكتشفة:")
+        st.caption(f"- شمعة ابتلاعية شرائية: {'نعم 🟢' if patterns['bullish_engulfing'] else 'لا ⚪'}")
+        st.caption(f"- اختراق قمة 20 يوم: {'نعم 🟢' if patterns['breakout_20d'] else 'لا ⚪'}")
+
+        # رسم البيانات التاريخية
+        df = analysis["raw_data"]
+        fig = go.Figure(data=[go.Candlestick(
+            x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']
+        )])
+        fig.update_layout(template="plotly_dark", height=450)
         st.plotly_chart(fig, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"خطأ في جلب بيانات السهم: {e}")
