@@ -1,18 +1,17 @@
 # pages/3_stock_analysis.py
 
-import streamlit as st
-import sys, os
-import plotly.graph_objects as go
-import sys
 import os
+import sys
 
-# إضافة مجلد الجذر الرئيسي للمشروع إلى مسار بايثون
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# 1. إضافة مجلد الجذر للمشروع في أول سطر لضمان معرفة السيرفر بمجلدات backend و ml_models
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
 
-# الآن يتم الاستدعاء بدون أي أخطاء
+# 2. الاستدعاء بعد ضبط المسار بشكل صحيح
 from backend.services.stock_service import USStockService
 from ml_models.predictor import StockPricePredictor
 from ml_models.recommendation import RecommendationEngine
@@ -33,15 +32,20 @@ if symbol_input:
         tech = report["technical"]
         df = report["df"]
 
-        st.subheader(f"🏢 {fund['company_name']} ({report['symbol']})")
-        st.caption(f"**Sector:** {fund['sector']} | **Industry:** {fund['industry']}")
+        st.subheader(f"🏢 {fund.get('company_name', report['symbol'])} ({report['symbol']})")
+        st.caption(f"**Sector:** {fund.get('sector', 'N/A')} | **Industry:** {fund.get('industry', 'N/A')}")
 
-        # مقاييس حقيقية مباشرة
+        # مقاييس حقيقية مباشرة مع التحقق من وجود القيم
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Current Price", f"${live['current_price']}", f"{live['change_pct']}%")
-        m2.metric("P/E Ratio", f"{fund['pe_ratio']:.2f}" if fund['pe_ratio'] else "N/A")
-        m3.metric("52-Week High", f"${fund['52_week_high']}")
-        m4.metric("52-Week Low", f"${fund['52_week_low']}")
+        
+        change_pct_val = live.get('change_pct', 0.0)
+        m1.metric("Current Price", f"${live.get('current_price', 0.0):,.2f}", f"{change_pct_val}%")
+        
+        pe_ratio = fund.get('pe_ratio')
+        m2.metric("P/E Ratio", f"{pe_ratio:.2f}" if pe_ratio else "N/A")
+        
+        m3.metric("52-Week High", f"${fund.get('52_week_high', 0.0):,.2f}")
+        m4.metric("52-Week Low", f"${fund.get('52_week_low', 0.0):,.2f}")
 
         st.divider()
 
@@ -54,30 +58,38 @@ if symbol_input:
         if "error" not in pred_res:
             c1, c2, c3 = st.columns(3)
             c1.metric("Predicted Next Day Price", f"${pred_res['predicted_price']}", f"{pred_res['expected_change_pct']}%")
-            c2.metric("RSI (14)", f"{tech['rsi_value']}", tech['rsi_status'])
-            c3.metric("Trend", tech['trend'])
+            c2.metric("RSI (14)", f"{tech.get('rsi_value', 'N/A')}", tech.get('rsi_status', 'N/A'))
+            c3.metric("Trend", tech.get('trend', 'N/A'))
 
         # التوصية الاستثمارية المباشرة
         rec = RecommendationEngine.get_final_recommendation(
             symbol=report['symbol'],
-            current_price=live['current_price'],
-            rsi=tech['rsi_value'],
-            pe=fund['pe_ratio'] if fund['pe_ratio'] else 20.0,
+            current_price=live.get('current_price', 0.0),
+            rsi=tech.get('rsi_value', 50.0),
+            pe=fund.get('pe_ratio') if fund.get('pe_ratio') else 20.0,
             margin=0.18,
-            eps=fund['eps'] if fund['eps'] else 1.0,
+            eps=fund.get('eps') if fund.get('eps') else 1.0,
             growth=0.08,
-            trend=tech['trend']
+            trend=tech.get('trend', 'محايد')
         )
 
         st.info(f"**AI Recommendation:** {rec['action_summary']}")
 
         # رسم الشموع اليابانية مع المتوسطات
         fig = go.Figure()
-        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Price"))
+        fig.add_trace(go.Candlestick(
+            x=df.index,
+            open=df['Open'],
+            high=df['High'],
+            low=df['Low'],
+            close=df['Close'],
+            name="Price"
+        ))
+        
         if 'SMA_20' in df.columns:
             fig.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], mode='lines', name='SMA 20', line=dict(color='yellow')))
         if 'SMA_50' in df.columns:
             fig.add_trace(go.Scatter(x=df.index, y=df['SMA_50'], mode='lines', name='SMA 50', line=dict(color='cyan')))
 
-        fig.update_layout(template="plotly_dark", height=480)
+        fig.update_layout(template="plotly_dark", height=480, margin=dict(l=10, r=10, t=30, b=10))
         st.plotly_chart(fig, use_container_width=True)
