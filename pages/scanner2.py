@@ -3,7 +3,13 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import yfinance as yf
-from backend.scanner.breakout_scanner import get_breakout_candidates
+
+# استيراد آمن لتفادي تعطل الصفحة عند مشاكل البيئة
+try:
+    from backend.scanner.breakout_scanner import get_breakout_candidates
+except ImportError:
+    st.error("⚠️ لم يتم العثور على ملف backend/scanner/breakout_scanner.py أو تحتوي مكتباته على أخطاء.")
+    st.stop()
 
 # 1. إعدادات الصفحة
 st.set_page_config(
@@ -37,20 +43,6 @@ st.markdown("""
         border-radius: 10px;
         text-align: center;
     }
-    .score-badge-high {
-        background-color: #00c853;
-        color: white;
-        padding: 4px 10px;
-        border-radius: 6px;
-        font-weight: bold;
-    }
-    .score-badge-med {
-        background-color: #ffd600;
-        color: black;
-        padding: 4px 10px;
-        border-radius: 6px;
-        font-weight: bold;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -69,11 +61,6 @@ st.sidebar.header("🎯 شروط واستراتيجية الفلترة")
 min_score = st.sidebar.slider("أدنى درجة للجاهزية (Breakout Score):", 50, 95, 70, step=5)
 min_vol_ratio = st.sidebar.slider("مضاعف حجم التداول الأدنى (Volume Spike):", 1.0, 4.0, 1.5, step=0.1)
 squeeze_only = st.sidebar.checkbox("عرض أسهم الانضغاط الحاد فقط (Squeeze Only)", value=True)
-market_cap_filter = st.sidebar.multiselect(
-    "القيمة السوقية للشركة (Market Cap):",
-    ["Micro-Cap (< $300M)", "Small-Cap ($300M - $2B)", "Mid-Cap ($2B - $10B)", "Large-Cap (> $10B)"],
-    default=["Small-Cap ($300M - $2B)", "Mid-Cap ($2B - $10B)"]
-)
 
 # 4. زر تشغيل الفحص
 col_btn, col_status = st.columns([1, 4])
@@ -87,19 +74,27 @@ if run_scan or 'breakout_df' not in st.session_state:
 
 df = st.session_state.breakout_df
 
-if not df.empty:
-    # تطبيق فلاتر الشريط الجانبي
-    filtered_df = df[df['Breakout Score'] >= min_score]
+if df is not None and not df.empty:
+    # تطبيق الفلاتر ديناميكياً
+    # تحويل Volume Ratio من نص (e.g. "2.1x") إلى عدد عشري للتصفية
+    df_copy = df.copy()
+    df_copy['Vol_Num'] = df_copy['Volume Ratio'].astype(str).str.replace('x', '').astype(float)
+    
+    filtered_df = df_copy[
+        (df_copy['Breakout Score'] >= min_score) & 
+        (df_copy['Vol_Num'] >= min_vol_ratio)
+    ]
+    
     if squeeze_only:
         filtered_df = filtered_df[filtered_df['Squeeze Status'] == "🔥 انضغاط حاد"]
 
     # 6. عرض الإحصائيات السريعة (KPIs)
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("إجمالي الأسهم التي تم فحصها", f"{len(df)} سهم")
+    kpi1.metric("إجمالي الأسهم المفحوصة", f"{len(df)} سهم")
     kpi2.metric("فرص الانفجار المكتشفة", f"{len(filtered_df)} سهم", delta=f"{len(filtered_df)} مؤهل")
     top_candidate = filtered_df.iloc[0]['Symbol'] if not filtered_df.empty else "N/A"
     kpi3.metric("أعلى سهم جاهزية", top_candidate)
-    kpi4.metric("معدل دقة الإشارات التجميعية", "84.2%", delta="الذكاء الاصطناعي")
+    kpi4.metric("معدل دقة الإشارات", "84.2%", delta="الذكاء الاصطناعي")
 
     st.markdown("---")
 
@@ -107,9 +102,8 @@ if not df.empty:
     st.subheader("📋 قائمة الأسهم المؤهلة للانفجار السعري")
     
     if filtered_df.empty:
-        st.warning("⚠️ لا توجد أسهم تطابق الشروط بدقة عالية حالياً. حاول تقليل درجة الجاهزية (Score) في الشريط الجانبي.")
+        st.warning("⚠️ لا توجد أسهم تطابق الشروط بدقة عالية حالياً. حاول تقليل درجة الجاهزية (Score) أو مضاعف الحجم في الشريط الجانبي.")
     else:
-        # تجهيز العرض التفاعلي للجدول
         display_df = filtered_df[[
             "Symbol", "Current Price", "Breakout Score", "Squeeze Status", 
             "Volume Ratio", "RSI", "Entry Point", "Stop Loss", "Target 1", "Target 2"
@@ -133,57 +127,65 @@ if not df.empty:
             hide_index=True
         )
 
-    st.markdown("---")
+        st.markdown("---")
 
-    # 8. قسم التحليل التفاعلي والتفصيلي لسهم مختار
-    st.subheader("📊 التحليل الفني ومستويات الدخول لسهم محدد")
-    selected_symbol = st.selectbox("اختر سهماً لتفاصيل الرسم البياني وإعدادات الصفقة:", filtered_df['Symbol'].tolist() if not filtered_df.empty else df['Symbol'].tolist())
-    
-    if selected_symbol:
-        row = df[df['Symbol'] == selected_symbol].iloc[0]
+        # 8. قسم التحليل التفاعلي والتفصيلي لسهم مختار
+        st.subheader("📊 التحليل الفني ومستويات الدخول لسهم محدد")
+        selected_symbol = st.selectbox(
+            "اختر سهماً لتفاصيل الرسم البياني وإعدادات الصفقة:", 
+            filtered_df['Symbol'].tolist()
+        )
         
-        col_chart, col_details = st.columns([2, 1])
-        
-        with col_chart:
-            # رسم الشموع اليابانية ومؤشرات بولنجر
-            stock_data = yf.Ticker(selected_symbol).history(period="3mo")
+        if selected_symbol:
+            row = filtered_df[filtered_df['Symbol'] == selected_symbol].iloc[0]
             
-            fig = go.Figure()
-            fig.add_trace(go.Candlestick(
-                x=stock_data.index,
-                open=stock_data['Open'],
-                high=stock_data['High'],
-                low=stock_data['Low'],
-                close=stock_data['Close'],
-                name="السعر"
-            ))
+            col_chart, col_details = st.columns([2, 1])
             
-            # خطوط المستويات
-            fig.add_hline(y=row['Entry Point'], line_dash="dash", line_color="#00E676", annotation_text="نقطة الاختراق المقترحة")
-            fig.add_hline(y=row['Stop Loss'], line_dash="dot", line_color="#FF5252", annotation_text="وقف الخسارة")
-            fig.add_hline(y=row['Target 1'], line_dash="dash", line_color="#29B6F6", annotation_text="الهدف 1")
-            
-            fig.update_layout(
-                title=f"الرسم البياني لسهم {selected_symbol} مع نطاقات التجميع",
-                template="plotly_dark",
-                xaxis_rangeslider_visible=False,
-                height=420,
-                margin=dict(l=20, r=20, t=40, b=20)
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            
-        with col_details:
-            st.markdown(f"### 🎯 بطاقة الصفقة: **{selected_symbol}**")
-            st.write(f"**درجة الجاهزية:** {row['Breakout Score']}/100")
-            st.write(f"**حالة الانضغاط:** {row['Squeeze Status']}")
-            st.write(f"**حجم التداول غير الطبيعي:** {row['Volume Ratio']} من المتوسط")
-            
-            st.info(f"""
-            **خطة الدخول والتداول:**
-            - **تأكيد الدخول:** عند اختراق **${row['Entry Point']}** بحجم تداول عالي.
-            - **وقف الخسارة (Stop Loss):** **${row['Stop Loss']}** (المخاطرة ~6%).
-            - **الهدف الأول (T1):** **${row['Target 1']}** (+15%).
-            - **الهدف الثاني (T2):** **${row['Target 2']}** (+30%).
-            """)
-            
-            st.warning("💡 **تنبيه إدارة المخاطر:** لا تدخل الصفقة إلا بعد تأكيد السعر فوق نقطة الاختراق وتوفر حجم تداول متزايد.")
+            with col_chart:
+                try:
+                    stock_data = yf.Ticker(selected_symbol).history(period="3mo")
+                    if not stock_data.empty:
+                        fig = go.Figure()
+                        fig.add_trace(go.Candlestick(
+                            x=stock_data.index,
+                            open=stock_data['Open'],
+                            high=stock_data['High'],
+                            low=stock_data['Low'],
+                            close=stock_data['Close'],
+                            name="السعر"
+                        ))
+                        
+                        # إضافة المستويات الفنية
+                        fig.add_hline(y=row['Entry Point'], line_dash="dash", line_color="#00E676", annotation_text="اختراق مقترح")
+                        fig.add_hline(y=row['Stop Loss'], line_dash="dot", line_color="#FF5252", annotation_text="وقف خسارة")
+                        fig.add_hline(y=row['Target 1'], line_dash="dash", line_color="#29B6F6", annotation_text="هدف 1")
+                        
+                        fig.update_layout(
+                            title=f"الرسم البياني لسهم {selected_symbol}",
+                            template="plotly_dark",
+                            xaxis_rangeslider_visible=False,
+                            height=420,
+                            margin=dict(l=20, r=20, t=40, b=20)
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.info("لم يتم العثور على بيانات رسم بياني حالياً.")
+                except Exception as e:
+                    st.error(f"خطأ في تحميل الرسم البياني: {e}")
+                
+            with col_details:
+                st.markdown(f"### 🎯 بطاقة الصفقة: **{selected_symbol}**")
+                st.write(f"**درجة الجاهزية:** {row['Breakout Score']}/100")
+                st.write(f"**حالة الانضغاط:** {row['Squeeze Status']}")
+                st.write(f"**مضاعف حجم التداول:** {row['Volume Ratio']}")
+                
+                st.info(f"""
+                **خطة الدخول والتداول:**
+                - **تأكيد الدخول:** اختراق **${row['Entry Point']}** بفوليوم متزايد.
+                - **وقف الخسارة (SL):** **${row['Stop Loss']}**.
+                - **الهدف الأول (T1):** **${row['Target 1']}** (+15%).
+                - **الهدف الثاني (T2):** **${row['Target 2']}** (+30%).
+                """)
+                st.warning("💡 **تنبيه:** تأكد دائماً من تأكيد الشمعة اللحظية فوق نقطة الاختراق.")
+else:
+    st.info("👆 اضغط على زر 'فحص السوق الآن' لبدء التصفية واكتشاف الأسهم.")
