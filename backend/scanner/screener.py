@@ -2,18 +2,22 @@
 
 import sys
 import os
-from typing import List, Dict
+from typing import List, Dict  # تم إضافة الاستيراد لمنع خطأ NameError
 
-# إضافة مجلد الجذر إلى مسار بايثون للتعرف على الموديولات عند النشر
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+# 1. إضافة المجلد الرئيسي للمشروع (Root Directory) بشكل صحيح لمسارات بايثون
+# تراجع شجرتين للخلف (من backend/scanner/ إلى جذر المشروع)
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
 
-# استيراد الوظائف المطلوبة من backend
+# 2. استيراد الموديولات الداخلية لـ Backend
 try:
     from backend.data_providers.market_data import USMarketDataProvider 
     from backend.analysis.technical import TechnicalAnalyzer
+    from backend.scanner.breakout_scanner import scan_for_potential_breakouts, get_breakout_candidates
 except ImportError as e:
-    # حماية ضد أخطاء الاستيراد أثناء التطوير
-    raise ImportError(f"فشل في استيراد الوحدات الخاصة بـ Backend: {e}")
+    raise ImportError(f"⚠️ فشل في استيراد الوحدات الداخلية لـ Backend: {e}")
+
 
 class SmartScanner:
     def __init__(self, symbols: List[str]):
@@ -38,7 +42,7 @@ class SmartScanner:
                 if not analysis or not isinstance(analysis, dict):
                     continue
 
-                # 3. قراءة المخرجات بشكل آمن باستخدام .get() مع وضع قيم افتراضية
+                # 3. قراءة المخرجات بشكل آمن باستخدام .get()
                 rsi = float(analysis.get("rsi_value", 50.0))
                 trend = str(analysis.get("trend", ""))
                 last_close = analysis.get("last_close", df['Close'].iloc[-1] if 'Close' in df else 0.0)
@@ -56,7 +60,7 @@ class SmartScanner:
                         })
                         
             except Exception as e:
-                # في حال تعثر جلب بيانات سهم معين، يتخطاه ويستكمل باقي القائمة
+                # يتخطى السهم في حال التلعثم واستكمال البقية دون انهيار التطبيق
                 print(f"⚠️ تعذر تحليل السهم {sym}: {e}")
                 continue
                 
